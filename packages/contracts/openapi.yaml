@@ -1,0 +1,533 @@
+openapi: 3.1.0
+info:
+  title: FMS Web System API
+  version: 0.3.0
+  description: Step 3 API. PostgreSQL persistence is enabled by environment; synthetic mode remains the safe default for local tests.
+servers: [{ url: 'http://127.0.0.1:3000/api/v1' }]
+paths:
+  /admin/dashboard/summary:
+    get:
+      summary: Permission-filtered read-only admin dashboard; synthetic snapshots explicitly labelled
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Dashboard counts, collections and previews; null means pending or restricted
+          content:
+            application/json:
+              schema:
+                $ref: "./admin-dashboard.schema.json"
+        "401": { description: Authentication required }
+        "403": { description: Admin dashboard permission required }
+  /admin/navigation:
+    get:
+      summary: Server-authorized admin navigation
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Permitted routes only }
+        "401": { description: Authentication required }
+        "403": { description: Admin shell access denied }
+  /admin/modules/{moduleId}:
+    get:
+      summary: Permission-checked Step 6Bâ€“6F placeholder
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: path, name: moduleId, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Module integration pending }
+        "401": { description: Authentication required }
+        "403": { description: Module permission denied }
+        "404": { description: Unknown module }
+  /health:
+    get: { operationId: health, responses: { '200': { description: Service and selected data-source status } } }
+  /auth/login:
+    post:
+      operationId: login
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+      responses: { '200': { description: Student/staff session issued }, '202': { description: Privileged MFA challenge issued }, '401': { $ref: '#/components/responses/Error' } }
+  /auth/mfa/verify:
+    post:
+      operationId: verifyMfa
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [challengeId, code], properties: { challengeId: { type: string, format: uuid }, code: { type: string, pattern: '^\\d{6}$' } } } } } }
+      responses: { '200': { description: MFA verified and session issued }, '401': { $ref: '#/components/responses/Error' } }
+  /auth/logout:
+    post: { operationId: logout, security: [{ sessionCookie: [], csrfToken: [] }], responses: { '200': { description: Persistent session revoked }, '403': { $ref: '#/components/responses/Error' } } }
+  /auth/student/activation/request:
+    post: { operationId: requestActivation, requestBody: { $ref: '#/components/requestBodies/AccountRequest' }, responses: { '202': { description: Generic accepted response; delivery integration is deferred } } }
+  /auth/student/activation/confirm:
+    post: { operationId: confirmActivation, requestBody: { $ref: '#/components/requestBodies/TokenConfirm' }, responses: { '200': { description: Student account activated }, '400': { $ref: '#/components/responses/Error' } } }
+  /auth/recovery/request:
+    post: { operationId: requestRecovery, requestBody: { $ref: '#/components/requestBodies/AccountRequest' }, responses: { '202': { description: Generic accepted response } } }
+  /auth/recovery/confirm:
+    post: { operationId: confirmRecovery, requestBody: { $ref: '#/components/requestBodies/TokenConfirm' }, responses: { '200': { description: Password reset and prior sessions revoked } } }
+  /me:
+    get: { operationId: currentUser, security: [{ sessionCookie: [] }], responses: { '200': { description: Current user and permissions }, '401': { $ref: '#/components/responses/Error' } } }
+  /inquiries:
+    post:
+      operationId: submitInquiry
+      parameters: [{ in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8, maxLength: 100 } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/InquiryRequest' } } } }
+      responses: { '201': { description: Persisted inquiry }, '409': { description: Key reused with a different request }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/inquiries:
+    get:
+      summary: Paginated inquiries; existing status values, exact filters and bounded pages
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: course, schema: { type: string } }
+        - { in: query, name: session, schema: { type: string } }
+        - { in: query, name: batch, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string } }
+        - { in: query, name: to, schema: { type: string } }
+        - { in: query, name: sort, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: pageSize, schema: { type: integer } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/inquiries/{recordId}:
+    parameters: [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    get:
+      summary: Safe inquiries details; audit history restricted to admin
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+    patch:
+      summary: Validated version-checked edit committed with immutable audit
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [version], minProperties: 2, properties: { version: { type: integer, minimum: 1 }, name: { type: string, minLength: 2, maxLength: 100 }, mobile: { type: string }, course: { type: string, minLength: 2, maxLength: 100 }, message: { type: string, maxLength: 500 }, status: { enum: [new, contacted, converted, closed] } } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/students:
+    get:
+      summary: Paginated students; existing status values, exact filters and bounded pages
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: course, schema: { type: string } }
+        - { in: query, name: session, schema: { type: string } }
+        - { in: query, name: batch, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string } }
+        - { in: query, name: to, schema: { type: string } }
+        - { in: query, name: sort, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: pageSize, schema: { type: integer } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/students/{recordId}:
+    parameters: [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    get:
+      summary: Safe students details; audit history restricted to admin
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+    patch:
+      summary: Validated version-checked edit committed with immutable audit
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [version], minProperties: 2, properties: { version: { type: integer, minimum: 1 }, name: { type: string, minLength: 2, maxLength: 120 }, mobile: { type: string }, email: { type: string, maxLength: 254 }, address: { type: string, maxLength: 500 } } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/admissions:
+    get:
+      summary: Paginated admissions; existing status values, exact filters and bounded pages
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: course, schema: { type: string } }
+        - { in: query, name: session, schema: { type: string } }
+        - { in: query, name: batch, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string } }
+        - { in: query, name: to, schema: { type: string } }
+        - { in: query, name: sort, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: pageSize, schema: { type: integer } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+    post:
+      summary: Create an admission using configured numbering and admission references
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/admissions/setup:
+    get:
+      summary: Admission form reference courses and batch capacities
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Admin admission references }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/admissions/{recordId}:
+    parameters: [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    get:
+      summary: Safe admissions details; audit history restricted to admin
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/inquiries/{recordId}/convert:
+    parameters: [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    post:
+      summary: Convert one inquiry to a linked admission; duplicate conversion is rejected
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/students/{recordId}/mark-left:
+    parameters: [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    post:
+      summary: Admin-only left status; preserves student and financial history
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [version], properties: { version: { type: integer, minimum: 1 } } }
+      responses:
+        '200': { description: Authorized management response }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Record version conflict or already converted }
+        '422': { description: Invalid input }
+  /admin/courses:
+    get:
+      summary: List courses with independent status and student count; no session or batch relationship is implied
+      security: [{ sessionCookie: [] }]
+      parameters: &academicListParameters
+        - { in: query, name: query, schema: { type: string, maxLength: 160 } }
+        - { in: query, name: status, schema: { type: string, enum: [active, inactive] } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: &academicListResponses
+        '200': { description: Paginated academic records }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create an independent course and immutable audit event
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CourseWrite' } } } }
+      responses: &academicWriteResponses
+        '201': { description: Academic record created }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/courses/{recordId}:
+    parameters: &academicRecordId [{ in: path, name: recordId, required: true, schema: { type: string } }]
+    get: { summary: Get one course, security: [{ sessionCookie: [] }], responses: { '200': { description: Course record }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } } }
+    patch:
+      summary: Version-checked course update with immutable audit
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/CourseWrite' }, { type: object, required: [version], properties: { version: { type: integer, minimum: 1 } } }] } } } }
+      responses: { '200': { description: Course updated }, '400': { $ref: '#/components/responses/Error' }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/sessions:
+    get: { summary: List independent academic sessions, security: [{ sessionCookie: [] }], parameters: *academicListParameters, responses: *academicListResponses }
+    post:
+      summary: Create an independent academic session and immutable audit event
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SessionWrite' } } } }
+      responses: *academicWriteResponses
+  /admin/sessions/{recordId}:
+    parameters: *academicRecordId
+    get: { summary: Get one academic session, security: [{ sessionCookie: [] }], responses: { '200': { description: Session record }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } } }
+    patch:
+      summary: Version-checked session update with immutable audit
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/SessionWrite' }, { type: object, required: [version], properties: { version: { type: integer, minimum: 1 } } }] } } } }
+      responses: { '200': { description: Session updated }, '400': { $ref: '#/components/responses/Error' }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/batches:
+    get: { summary: List global batch-time capacity records without course or session linkage, security: [{ sessionCookie: [] }], parameters: *academicListParameters, responses: *academicListResponses }
+    post:
+      summary: Create a global batch-time capacity record and immutable audit event
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BatchWrite' } } } }
+      responses: *academicWriteResponses
+  /admin/batches/{recordId}:
+    parameters: *academicRecordId
+    get: { summary: Get one global batch-time capacity record, security: [{ sessionCookie: [] }], responses: { '200': { description: Batch record with enrolled and available seats }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } } }
+    patch:
+      summary: Version-checked batch capacity update; capacity cannot be below active enrollment
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/BatchWrite' }, { type: object, required: [version], properties: { version: { type: integer, minimum: 1 } } }] } } } }
+      responses: { '200': { description: Batch updated }, '400': { $ref: '#/components/responses/Error' }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }  /students/me/summary:
+    get: { operationId: ownStudentSummary, security: [{ sessionCookie: [] }], responses: { '200': { description: Authenticated student's own summary }, '403': { $ref: '#/components/responses/Error' } } }
+  /students/{studentRecordId}/summary:
+    get:
+      operationId: administrativeStudentSummary
+      security: [{ sessionCookie: [] }]
+      parameters: [{ in: path, name: studentRecordId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Privileged read-only student summary }, '404': { $ref: '#/components/responses/Error' } }
+  /students/me/portal:
+    get:
+      operationId: ownStudentPortal
+      description: Session-owned extended read model. No ownership/filter query parameters accepted. Summary endpoint retains authoritative fee totals. PostgreSQL extended records return a pending state; synthetic snapshots include an explicit asOf date.
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Own scoped portal data or integration-pending state
+          content:
+            application/json:
+              schema: { type: object, required: [portal], properties: { portal: { $ref: './student-portal.schema.json' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /students/me/notices/{noticeId}/read:
+    post:
+      operationId: readOwnNotice
+      description: Same-origin, CSRF-protected and audited read acknowledgement. Notice ownership derives solely from the session. Repeated acknowledgement retains readAt. Synthetic persistence only; unsupported repositories return 501. No request body is used.
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      parameters: [{ in: path, name: noticeId, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,100}$' } }]
+      responses:
+        '200':
+          description: Own notice read state
+          content:
+            application/json:
+              schema: { type: object, properties: { notice: { $ref: './student-portal.schema.json#/$defs/notice' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '501': { $ref: '#/components/responses/Error' }
+  /students/me/receipts/{receiptId}/document:
+    get:
+      operationId: ownReceiptDocumentShell
+      description: Authorized shell only. Own receipt returns 501 DOCUMENT_PENDING. Unknown or another student's receipt returns identical 404. No file paths, URLs or document blobs are returned. No document generation or public sequential endpoint exists.
+      security: [{ sessionCookie: [] }]
+      parameters: [{ in: path, name: receiptId, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,100}$' } }]
+      responses:
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '501': { $ref: '#/components/responses/Error' }
+  /admin/finance:
+    get:
+      summary: List saved fee snapshots, installments, posted payment history, dues, and receipt snapshots
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: kind, schema: { enum: [fees, installments, payments, dues, receipts] } }
+        - { in: query, name: query, schema: { type: string, maxLength: 120 } }
+        - { in: query, name: asOf, schema: { type: string, format: date } }
+      responses: { '200': { description: Authorized financial read model }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' } }
+  /admin/finance/students/{studentId}:
+    get:
+      summary: One student's historical fee, installment, payment, due, and receipt read model
+      security: [{ sessionCookie: [] }]
+      parameters: [{ in: path, name: studentId, required: true, schema: { type: string } }]
+      responses: { '200': { description: Financial read model }, '404': { $ref: '#/components/responses/Error' } }
+  /admin/finance/students/{studentId}/payments:
+    post:
+      summary: Admin-only audited payment posting with unique receipt number and outstanding validation
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      parameters: [{ in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 16, maxLength: 100 } }]
+      responses: { '201': { description: Posted payment and receipt snapshot }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/finance/students/{studentId}/payments/{paymentId}:
+    patch:
+      summary: Admin-only versioned audited payment correction; revision history is preserved
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '200': { description: Corrected payment }, '409': { $ref: '#/components/responses/Error' } }
+    delete:
+      summary: Admin-only audited logical reversal; payment and receipt history are preserved
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '200': { description: Reversed payment }, '409': { $ref: '#/components/responses/Error' } }
+  /admin/step6e:
+    get:
+      summary: List Step 6E notices, due reminders, certificates, or ID-card issue history
+      description: Admin-only read model. Due reminders start seven days before the cumulative installment due date, include carry-forward, and exclude fully-paid students. WhatsApp remains manual; approved certificate and ID-card print layouts are available.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: kind, required: true, schema: { enum: [notices, reminders, certificates, id-cards] } }
+        - { in: query, name: asOf, schema: { type: string, format: date } }
+      responses: { '200': { description: Step 6E read model }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/notices:
+    post:
+      summary: Save an audited notice with an active/course/session/selected-student recipient snapshot
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '201': { description: Notice and saved recipient history }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/reminders:
+    post:
+      summary: Record an eligible cumulative due reminder in history without invoking WhatsApp
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '201': { description: Reminder history record }, '409': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/certificates:
+    post:
+      summary: Issue an audited eligible certificate
+      description: Main certificate requires completed course and full payment. CVRU add-on gates are Data Entry 40%, MS Office 50%, and Accounting/Tally 60%. Issue date cannot precede course end.
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '201': { description: Certificate issue record }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/id-cards:
+    post:
+      summary: Create an audited ID-card issue record for an active student
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '201': { description: ID-card issue record }, '409': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/id-cards/{idCardId}/print:
+    post:
+      summary: Increment ID-card print count and status
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses: { '200': { description: Updated ID-card print history }, '404': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/certificates/{certificateId}/document:
+    get:
+      summary: Open the approved A4 landscape certificate print document
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Printable certificate HTML }, '404': { $ref: '#/components/responses/Error' } }
+  /admin/step6e/id-cards/{idCardId}/document:
+    get:
+      summary: Open the approved standard-size ID card on an A4 portrait print sheet
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Printable ID-card HTML }, '404': { $ref: '#/components/responses/Error' } }
+  /admin/expenses:
+    get:
+      summary: List and filter expenses with posted total
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: query, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: categoryId, in: query, schema: { type: string, format: uuid } }
+        - { name: mode, in: query, schema: { type: string, maxLength: 40 } }
+      responses: { '200': { description: Expense history, categories and posted total }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' } }
+    post:
+      summary: Create a positive expense with an allocated expense number and immutable audit event
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '201': { description: Expense created }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/expenses/categories:
+    post:
+      summary: Create or reuse a case-insensitively unique expense category
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '201': { description: Expense category }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/expenses/{expenseId}:
+    parameters:
+      - { name: expenseId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      summary: Versioned expense correction with preserved revision and audit history
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '200': { description: Updated expense }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+    delete:
+      summary: Logically void an expense; physical deletion is not performed
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '200': { description: Voided expense with history preserved }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/profit-loss:
+    get:
+      summary: Posted fee income minus posted expenses for an optional date range
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Income, expenses and signed profit/loss in paise }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/reports:
+    get:
+      summary: Read-only daily, monthly, course-wise, due, or student report
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [daily, monthly, course-wise, dues, students] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { name: query, in: query, schema: { type: string, maxLength: 120 } }
+      responses: { '200': { description: Report rows and exact summary for the selected filters }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/salary:
+    get:
+      summary: List staff salary records, active staff/admin choices, and net/paid/due totals
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Salary history and summary }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' } }
+    post:
+      summary: Create a calculated and audited staff salary record
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '201': { description: Salary record created }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /admin/salary/{salaryId}:
+    parameters: [{ name: salaryId, in: path, required: true, schema: { type: string, format: uuid } }]
+    patch:
+      summary: Versioned salary correction with preserved revision and audit history
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '200': { description: Salary record updated }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+    delete:
+      summary: Logically void a salary record while preserving history
+      security: [{ sessionCookie: [] }, { csrfToken: [] }]
+      responses: { '200': { description: Salary record voided }, '409': { $ref: '#/components/responses/Error' } }
+  /admin/administration/users:
+    get: { summary: List sanitized users, security: [{ sessionCookie: [] }], responses: { '200': { description: Users without credentials or MFA secrets }, '403': { $ref: '#/components/responses/Error' } } }
+    post: { summary: Create a pending Admin or Staff account, security: [{ sessionCookie: [] }, { csrfToken: [] }], responses: { '201': { description: Pending account created }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } } }
+  /admin/administration/audit:
+    get: { summary: Read append-only audit events, security: [{ sessionCookie: [] }], responses: { '200': { description: Filtered audit events }, '403': { $ref: '#/components/responses/Error' } } }
+  /admin/administration/settings:
+    get: { summary: Read versioned institute settings, security: [{ sessionCookie: [] }], responses: { '200': { description: Institute settings } } }
+    patch: { summary: Update institute settings with optimistic version and revision history, security: [{ sessionCookie: [] }, { csrfToken: [] }], responses: { '200': { description: Updated settings }, '409': { $ref: '#/components/responses/Error' } } }
+  /admin/administration/backup:
+    get: { summary: Export credential-free logical backup, security: [{ sessionCookie: [] }], responses: { '200': { description: Logical backup excluding authentication secrets } } }
+  /admin/administration/restore/validate:
+    post: { summary: Validate logical backup format without applying it, security: [{ sessionCookie: [] }, { csrfToken: [] }], responses: { '200': { description: Validation result; restore apply remains unavailable } } }
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: fms_session }
+    csrfToken: { type: apiKey, in: header, name: X-CSRF-Token }
+  requestBodies:
+    AccountRequest: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, minLength: 3, maxLength: 120 } } } } } }
+    TokenConfirm: { required: true, content: { application/json: { schema: { type: object, required: [token, password], properties: { token: { type: string }, password: { type: string, minLength: 12, maxLength: 200 } } } } } }
+  responses:
+    Error: { description: Standard error envelope, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  schemas:
+    Role: { type: string, enum: [admin, staff, student] }
+    InquiryStatus: { type: string, enum: [new, contacted, converted, closed] }
+    LoginRequest: { type: object, additionalProperties: false, required: [userId, password], properties: { userId: { type: string, minLength: 3, maxLength: 120 }, password: { type: string, minLength: 8, maxLength: 200 } } }
+    InquiryRequest: { type: object, additionalProperties: false, required: [name, mobile, course, consent], properties: { name: { type: string, minLength: 2, maxLength: 100 }, mobile: { type: string, pattern: '^\\+?[0-9]{10,15}$' }, course: { type: string, minLength: 2, maxLength: 100 }, message: { type: string, maxLength: 500 }, consent: { type: boolean, const: true } } }
+    CourseWrite: { type: object, additionalProperties: false, required: [code, name, duration, fee, status], properties: { code: { type: string, minLength: 1, maxLength: 80 }, name: { type: string, minLength: 1, maxLength: 160 }, duration: { type: string, maxLength: 100 }, fee: { type: number, minimum: 0, multipleOf: 0.01 }, status: { type: string, enum: [active, inactive] } } }
+    SessionWrite: { type: object, additionalProperties: false, required: [name, startDate, endDate, status], properties: { name: { type: string, minLength: 1, maxLength: 160 }, startDate: { type: string, format: date }, endDate: { type: string, format: date }, status: { type: string, enum: [active, inactive] } } }
+    BatchWrite: { type: object, additionalProperties: false, required: [batch, capacity], properties: { batch: { type: string, minLength: 1, maxLength: 120 }, capacity: { type: integer, minimum: 1, maximum: 999 } } }
+    ErrorEnvelope: { type: object, required: [error], properties: { error: { type: object, required: [code, message, requestId], properties: { code: { type: string }, message: { type: string }, requestId: { type: string } } } } }
+

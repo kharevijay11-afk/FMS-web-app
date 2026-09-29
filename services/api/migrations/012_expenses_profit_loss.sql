@@ -1,0 +1,10 @@
+BEGIN;
+CREATE SEQUENCE expense_number_seq;
+CREATE TABLE expense_categories(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name varchar(120) NOT NULL,status varchar(16) NOT NULL DEFAULT 'active' CHECK(status IN('active','inactive')),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX expense_categories_name_unique_idx ON expense_categories(lower(name));
+INSERT INTO expense_categories(name) VALUES('Rent'),('Salary'),('Electricity'),('Internet'),('Stationery'),('Maintenance');
+CREATE TABLE expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),expense_number varchar(80) NOT NULL UNIQUE,category_id uuid REFERENCES expense_categories(id),expense_date date NOT NULL,title varchar(160) NOT NULL,amount_paise bigint NOT NULL CHECK(amount_paise>0),payment_mode varchar(40) NOT NULL DEFAULT 'Cash',vendor varchar(160),bill_number varchar(120),notes varchar(500),status varchar(16) NOT NULL DEFAULT 'posted' CHECK(status IN('posted','void')),version integer NOT NULL DEFAULT 1 CHECK(version>=1),created_by uuid REFERENCES app_users(id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),voided_at timestamptz);
+CREATE INDEX expenses_date_idx ON expenses(expense_date DESC,id);
+CREATE INDEX expenses_category_idx ON expenses(category_id,expense_date DESC);
+CREATE TABLE expense_revisions(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,expense_id uuid NOT NULL REFERENCES expenses(id),version integer NOT NULL,previous_record jsonb NOT NULL,changed_by uuid REFERENCES app_users(id),changed_at timestamptz NOT NULL DEFAULT now());
+COMMIT;

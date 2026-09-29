@@ -1,0 +1,21 @@
+{
+    "name":  "fms-web-system",
+    "version":  "0.3.0",
+    "private":  true,
+    "description":  "Secure Step 2 foundation for FMS Web System",
+    "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=22"
+                },
+    "scripts":  {
+                    "start":  "node services/api/src/server-step3.js",
+                    "dev":  "node --watch services/api/src/server-step3.js",
+                    "check":  "node --check services/api/src/server-step3.js \u0026\u0026 node --check services/api/src/app-step3.js \u0026\u0026 node --check services/api/src/repositories/postgres.js",
+                    "test":  "node --test",
+                    "migrate":  "node services/api/src/db/migrate.js",
+                    "seed":  "node services/api/src/db/seed.js"
+                },
+    "dependencies":  {
+                         "pg":  "8.23.0"
+                     }
+}

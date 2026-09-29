@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*Password*.txt
+*password*.txt
+supabase URL.txt
+*.secret
+*.secrets
+work/*.private.json
+work/
+tmp/
+.step*-backup/
+node_modules/
+coverage/
+*.log
+.DS_Store
+Thumbs.db

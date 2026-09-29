@@ -1,0 +1,4 @@
+@page certificate{size:A4 landscape;margin:0}
+@page idcard{size:A4 portrait;margin:0}
+.certificate-sheet{page:certificate}
+.id-sheet{page:idcard}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Admin dashboard summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source","asOf","notice","counts","collections","recentInquiries","recentPayments","upcomingDues","courseWiseCollection","batches"],
+  "properties": {
+    "source": {"enum":["synthetic","postgres"]},
+    "asOf": {"type":["string","null"]},
+    "notice": {"type":"string"},
+    "counts": {"type":"object","additionalProperties":{"type":["integer","null"],"minimum":0}},
+    "collections": {"type":"object","required":["today","month","totalDue"],"additionalProperties":{"type":["integer","null"],"minimum":0}},
+    "recentInquiries": {"type":"array","maxItems":5,"items":{"type":"object"}},
+    "recentPayments": {"type":"array","maxItems":5,"items":{"type":"object"}},
+    "upcomingDues": {"type":"array","items":{"type":"object"}},
+    "courseWiseCollection": {"type":"array","items":{"type":"object"}},
+    "batches": {"type":"array","items":{"type":"object"}}
+  }
+}
