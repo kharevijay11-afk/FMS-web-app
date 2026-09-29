@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: fms-web-app
+    runtime: node
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_SOURCE
+        value: postgres
+      - key: DATABASE_SSL
+        value: true
+      - key: DATABASE_SSL_VERIFY
+        value: true
+      - key: DATABASE_SSL_CA_PATH
+        value: /etc/secrets/supabase-ca.crt
+      - key: DATABASE_URL
+        sync: false
+      - key: MFA_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TOKEN_PEPPER
+        generateValue: true
+      - key: AUDIT_IP_PEPPER
+        generateValue: true
+      - key: SESSION_TTL_SECONDS
+        value: 3600
+      - key: LOGIN_WINDOW_SECONDS
+        value: 900
+      - key: LOGIN_MAX_ATTEMPTS
+        value: 8
+      - key: ACCOUNT_LOCK_SECONDS
+        value: 900
